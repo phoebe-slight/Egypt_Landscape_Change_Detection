@@ -1,0 +1,49 @@
+var AOI_1= ee.FeatureCollection("INSERT_ASSET_PATHWAY")
+
+var aoi = AOI_1;
+
+var s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+            .filterBounds(aoi)
+            .filterDate('2020-01-01', '2020-12-31')
+            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20));
+
+// Simple cloud mask
+function maskS2(image) {
+  var qa = image.select('QA60');
+  var cloudBitMask = 1 << 10;
+  var cirrusBitMask = 1 << 11;
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0)
+              .and(qa.bitwiseAnd(cirrusBitMask).eq(0));
+  return image.updateMask(mask).divide(10000);
+}
+
+// Apply mask and make a median composite
+var s2_clean = s2.map(maskS2);
+var composite = s2_clean.median().clip(aoi);
+
+// Centre map and add layer
+Map.centerObject(aoi, 9);
+Map.addLayer(
+  composite,
+  {bands: ['B4', 'B3', 'B2'], min: 0.05, max: 0.3},
+  'S2 RGB composite'
+);
+
+// NDVI Calculation
+var ndvi = composite.normalizedDifference(['B8', 'B4']).rename('NDVI');
+
+// Visualise NDVI
+Map.addLayer(
+  ndvi,
+  {min: -0.2, max: 0.8, palette: ['brown', 'pink', 'green']},
+  'NDVI'
+);
+
+var ndviStats= ndvi.reduceRegion({
+  reducer: ee.Reducer.mean() .combine(ee.Reducer.minMax(),'',true),
+  geometry: aoi,
+  scale: 10,
+  maxPixels:1e13
+});
+
+print('NDVI stats:', ndviStats);
