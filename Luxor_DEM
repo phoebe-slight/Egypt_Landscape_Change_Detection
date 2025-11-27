@@ -1,0 +1,70 @@
+//Define AOI
+
+var AOI_1 = ee.FeatureCollection("INSERT_AOI_PATHWAY");
+
+//Load SRTM DEM 
+var dem = ee. Image("USGS/SRTMGL1_003");
+
+// Clip to AOI
+
+var demClip= dem.clip(AOI_1);
+
+// Make terrian layers-GEE looks at elevation of each pixel and its neighbours 
+var terrain= ee.Algorithms.Terrain(demClip);
+
+//Extract indivdual layers
+
+var slope = terrain.select('slope');
+var aspect = terrain.select('aspect');
+var hillshade = terrain.select('hillshade');
+
+//Roughness-how much does the elevation vary around each pixel?
+
+var roughness = demClip.reduceNeighborhood({
+  reducer: ee.Reducer.stdDev(),
+  kernel: ee.Kernel.square(3),
+});
+
+//Visulaisation parameters-create visualisation settings for the map-does not change data just how it looks on the screen
+
+var demVis ={min: 0, max: 3000, palette:['yellow','green','red']};
+var slopeVis = {min:0, max: 60, palette:['green', 'yellow', 'red']};
+var hillshadeVis = {min: 0, max: 255, palette: ['black', 'white']};
+var roughVis = {min: 0, max: 50, palette: ['white', 'purple', 'red']};
+
+//Show everything on the map-connects the data layer, the visual settings, the name that appears on the map 
+// Load AOI
+
+// Center map on AOI
+Map.centerObject(AOI_1, 9);
+
+//Map.addLayer(DATA, VIS_SETTINGS, 'NAME ON MAP')
+
+Map.centerObject(AOI_1,9);
+
+Map.addLayer(demClip, demVis, 'DEM');
+Map.addLayer(slope, slopeVis, 'Slope');
+Map.addLayer(aspect, {}, 'Aspect');
+Map.addLayer(hillshade, hillshadeVis, 'Hillshade');
+Map.addLayer(roughness, roughVis, 'Roughness');
+
+//Export example (Slope): send the slope layer to my Google Drive as a GeoTIFF
+
+Export.image.toDrive({
+  image : slope,
+  description : 'Slope_EXPORT',
+  region : AOI_1,
+  scale : 30,
+  maxPixels : 1e13
+});
+
+var tpi = demClip.subtract(
+  demClip.focal_mean(250, 'circle', 'meters')
+  );
+  
+Map.addLayer(tpi,{min:-50, max: 50, palette:["blue", "white", "red"]}, 'TPI');
+
+var tri= demClip.focal_max(90, 'circle', 'meters')
+.subtract(demClip.focal_min(90, 'circle', 'meters'));
+Map.addLayer(tri, {min:0, max: 150, palette:['white', 'orange', 'red']}, 'TRI');
+
